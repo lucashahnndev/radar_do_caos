@@ -1,5 +1,5 @@
 // Configuração da aplicação
-const API_BASE_URL = '/trade';
+const API_BASE_URL = '';
 let historicoChartInstance = null;
 function dashboardApp() {
     return {
