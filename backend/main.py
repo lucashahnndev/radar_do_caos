@@ -14,10 +14,10 @@ import yfinance as yf
 import json
 from typing import Optional, List
 
-dominio = "tricontroledeacesso.com/trade"
+dominio = os.environ.get("dominio")
 # Configurações
 DB_PATH = "acoes.db"  # Caminho para o banco do bot
-SECRET_KEY = os.environ.get("DASHBOARD_SECRET_KEY", "super-secret-key-default-for-dev-only")
+SECRET_KEY = os.environ.get("DASHBOARD_SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 horas
 
