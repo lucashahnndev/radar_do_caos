@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Ações - Radar do Caos</title>
+    <link rel="stylesheet" href="/trade/static/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/cdn.min.js"></script>
+</head>
+<body x-data="dashboardApp()" x-init="init()" :class="theme">
+    <!-- Loading Screen -->
+    <div x-show="loading" class="loading-screen">
+        <div class="loading-spinner"></div>
+        <p>Carregando dashboard...</p>
+    </div>
+
+    <!-- Login Modal -->
+    <div x-show="!isAuthenticated && !loading" class="login-modal">
+        <div class="login-container">
+            <div class="login-header">
+                <h1>🚀 Radar do Caos</h1>
+                <p>Dashboard de Monitoramento de Ações</p>
+            </div>
+            <form @submit.prevent="login()" class="login-form">
+                <div class="form-group">
+                    <label for="userId">ID do Usuário</label>
+                    <input type="number" id="userId" x-model="loginForm.userId" required>
+                </div>
+                <div class="form-group">
+                    <label for="dashboardKey">Chave do Dashboard</label>
+                    <input type="password" id="dashboardKey" x-model="loginForm.dashboardKey" required>
+                </div>
+                <button type="submit" :disabled="loginLoading" class="login-btn">
+                    <span x-show="!loginLoading">Entrar</span>
+                    <span x-show="loginLoading">Entrando...</span>
+                </button>
+                <div x-show="loginError" class="error-message" x-text="loginError"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div x-show="isAuthenticated && !loading" class="dashboard">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>📊 Radar do Caos</h2>
+                <button @click="toggleTheme()" class="theme-toggle">
+                    <span x-show="theme === 'dark'">☀️</span>
+                    <span x-show="theme === 'light'">🌙</span>
+                </button>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="#" @click="currentView = 'overview'" :class="{'active': currentView === 'overview'}">
+                    📈 Visão Geral
+                </a>
+                <a href="#" @click="currentView = 'acoes'" :class="{'active': currentView === 'acoes'}">
+                    📋 Ações Monitoradas
+                </a>
+                <a href="#" @click="currentView = 'historico'" :class="{'active': currentView === 'historico'}">
+                    📊 Histórico de Ações
+                </a>
+                <a href="#" @click="currentView = 'portfolio'" :class="{'active': currentView === 'portfolio'}">
+                    💼 Meu Portfólio
+                </a>
+                <a href="#" @click="currentView = 'alerts'" :class="{'active': currentView === 'alerts'}">
+                    🔔 Alertas
+                </a>
+                <a href="#" @click="currentView = 'alert-history'" :class="{'active': currentView === 'alert-history'}">
+                    📜 Histórico de Alertas
+                </a>
+                <a href="#" @click="currentView = 'settings'" :class="{'active': currentView === 'settings'}">
+                    ⚙️ Configurações
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <p x-text="user.username || 'Usuário'"></p>
+                    <small x-text="'ID: ' + user.user_id"></small>
+                </div>
+                <button @click="logout()" class="logout-btn">Sair</button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="content-header">
+                <h1 x-text="getViewTitle()"></h1>
+                <div class="header-actions">
+                    <button @click="refreshData()" class="refresh-btn" :disabled="refreshing">
+                        <span x-show="!refreshing">🔄</span>
+                        <span x-show="refreshing">⏳</span>
+                        Atualizar
+                    </button>
+                </div>
+            </header>
+
+            <!-- Overview View -->
+            <div x-show="currentView === 'overview'" class="view-content">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Ações Monitoradas</h3>
+                        <p class="stat-number" x-text="acoesDetalhadas.length"></p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Posições no Portfólio</h3>
+                        <p class="stat-number" x-text="portfolio.length"></p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Alertas Ativos</h3>
+                        <p class="stat-number" x-text="getTotalAlerts()"></p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Valor Total</h3>
+                        <p class="stat-number" x-text="formatCurrency(getTotalPortfolioValue())"></p>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <h3>Performance das Ações</h3>
+                        <canvas id="performanceChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Distribuição do Portfólio</h3>
+                        <canvas id="portfolioChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ações Monitoradas View -->
+            <div x-show="currentView === 'acoes'" class="view-content">
+                <div class="section-header">
+                    <h2>Ações Monitoradas</h2>
+                    <button @click="showAddAcaoModal = true" class="btn-primary">+ Adicionar Ação</button>
+                </div>
+
+                <div class="acoes-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Preço Referência</th>
+                                <th>Preço Atual</th>
+                                <th>Variação</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="acao in acoesDetalhadas" :key="acao.ticker">
+                                <tr>
+                                    <td><strong x-text="acao.ticker"></strong></td>
+                                    <td x-text="formatCurrency(acao.preco_referencia)"></td>
+                                    <td x-text="formatCurrency(acao.preco_atual)"></td>
+                                    <td>
+                                        <span :class="getVariationClass(acao.variacao_percentual)"
+                                              x-text="formatPercentage(acao.variacao_percentual)"></span>
+                                    </td>
+                                    <td>
+                                        <button @click="editAcao(acao)" class="btn-small">Editar</button>
+                                        <button @click="deleteAcao(acao.ticker)" class="btn-small btn-danger">Remover</button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Histórico de Ações View -->
+            <div x-show="currentView === 'historico'" class="view-content">
+                <div class="section-header">
+                    <h2>Histórico de Ações</h2>
+                    <div class="filters">
+                        <select x-model="historicoFilters.ticker" @change="loadHistoricoData()">
+                            <option value="">Selecione uma ação</option>
+                            <template x-for="acao in acoesDetalhadas" :key="acao.ticker">
+                                <option :value="acao.ticker" x-text="acao.ticker"></option>
+                            </template>
+                        </select>
+                        <select x-model="historicoFilters.periodo" @change="loadHistoricoData()">
+                            <option value="1d">1 Dia</option>
+                            <option value="7d">7 Dias</option>
+                            <option value="1m">1 Mês</option>
+                            <option value="3m">3 Meses</option>
+                            <option value="1y">1 Ano</option>
+                            <option value="all">Todo Período</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="chart-container large">
+                    <canvas id="historicoChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Portfolio View -->
+            <div x-show="currentView === 'portfolio'" class="view-content">
+                <div class="section-header">
+                    <h2>Meu Portfólio</h2>
+                    <button @click="showAddPositionModal = true" class="btn-primary">+ Adicionar Posição</button>
+                </div>
+
+                <div class="portfolio-grid">
+                    <template x-for="position in portfolio" :key="position.ticker">
+                        <div class="portfolio-card">
+                            <h3 x-text="position.ticker"></h3>
+                            <div class="position-details">
+                                <p>Quantidade: <span x-text="position.quantity"></span></p>
+                                <p>Preço Médio: <span x-text="formatCurrency(position.avg_price)"></span></p>
+                                <p>Valor Total: <span x-text="formatCurrency(position.quantity * position.avg_price)"></span></p>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Alertas View -->
+            <div x-show="currentView === 'alerts'" class="view-content">
+                <div class="alerts-section">
+                    <div class="section-header">
+                        <h2>Alertas de Preço</h2>
+                        <button @click="showAddAlertModal = true" class="btn-primary">+ Adicionar Alerta</button>
+                    </div>
+
+                    <div class="alerts-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Ticker</th>
+                                    <th>Preço Alvo</th>
+                                    <th>Sentido</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="alerta in alertasPreco" :key="alerta.ticker">
+                                    <tr>
+                                        <td x-text="alerta.ticker"></td>
+                                        <td x-text="formatCurrency(alerta.preco_alvo)"></td>
+                                        <td>
+                                            <span :class="alerta.sentido === 'UP' ? 'badge-success' : 'badge-warning'"
+                                                  x-text="alerta.sentido === 'UP' ? 'Subida' : 'Queda'"></span>
+                                        </td>
+                                        <td>
+                                            <span :class="alerta.notificado ? 'badge-info' : 'badge-success'"
+                                                  x-text="alerta.notificado ? 'Notificado' : 'Ativo'"></span>
+                                        </td>
+                                        <td>
+                                            <button @click="editAlertaPreco(alerta)" class="btn-small">Editar</button>
+                                            <button @click="deleteAlertaPreco(alerta.ticker)" class="btn-small btn-danger">Remover</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="alerts-section">
+                    <div class="section-header">
+                        <h2>Alertas de Pânico</h2>
+                        <button @click="showAddPanicoModal = true" class="btn-primary">+ Adicionar Alerta de Pânico</button>
+                    </div>
+
+                    <div class="alerts-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Ticker</th>
+                                    <th>Percentual de Queda</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="alerta in alertasPanico" :key="alerta.ticker">
+                                    <tr>
+                                        <td x-text="alerta.ticker"></td>
+                                        <td x-text="alerta.percentual_queda + '%'"></td>
+                                        <td>
+                                            <span :class="alerta.ativo ? 'badge-success' : 'badge-danger'"
+                                                  x-text="alerta.ativo ? 'Ativo' : 'Inativo'"></span>
+                                        </td>
+                                        <td>
+                                            <button @click="editAlertaPanico(alerta)" class="btn-small">Editar</button>
+                                            <button @click="deleteAlertaPanico(alerta.ticker)" class="btn-small btn-danger">Remover</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Histórico de Alertas View -->
+            <div x-show="currentView === 'alert-history'" class="view-content">
+                <div class="section-header">
+                    <h2>Histórico de Alertas</h2>
+                </div>
+
+                <div class="alert-history-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Data/Hora</th>
+                                <th>Ticker</th>
+                                <th>Tipo</th>
+                                <th>Valor</th>
+                                <th>Mensagem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="alerta in historicoAlertas" :key="alerta.id">
+                                <tr>
+                                    <td x-text="formatDateTime(alerta.triggered_at)"></td>
+                                    <td x-text="alerta.ticker"></td>
+                                    <td>
+                                        <span :class="alerta.alert_type === 'price' ? 'badge-info' : 'badge-warning'"
+                                              x-text="alerta.alert_type === 'price' ? 'Preço' : 'Pânico'"></span>
+                                    </td>
+                                    <td x-text="formatCurrency(alerta.trigger_value)"></td>
+                                    <td x-text="alerta.message"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Settings View -->
+            <div x-show="currentView === 'settings'" class="view-content">
+                <div class="settings-section">
+                    <h2>Preferências</h2>
+                    <div class="setting-item">
+                        <label>Tema</label>
+                        <select x-model="theme" @change="updateTheme()">
+                            <option value="dark">Escuro</option>
+                            <option value="light">Claro</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h2>Configurações do Bot</h2>
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" x-model="botConfig.resumo_automatico" @change="updateBotConfig()">
+                            Resumo Automático
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <label>Horário do Resumo</label>
+                        <input type="time" x-model="botConfig.horario_resumo" @change="updateBotConfig()">
+                    </div>
+                    <div class="setting-item">
+                        <label>Horário do Alerta de Pânico</label>
+                        <input type="time" x-model="botConfig.horario_panico" @change="updateBotConfig()">
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h2>Segurança</h2>
+                    <button @click="showChangeKeyModal = true" class="btn-primary">Alterar Chave do Dashboard</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <!-- Add Ação Modal -->
+    <div x-show="showAddAcaoModal" class="modal-overlay" @click="showAddAcaoModal = false">
+        <div class="modal" @click.stop>
+            <h3>Adicionar Ação</h3>
+            <form @submit.prevent="addAcao()">
+                <div class="form-group">
+                    <label>Ticker</label>
+                    <input type="text" x-model="newAcao.ticker" required>
+                </div>
+                <div class="form-group">
+                    <label>Preço de Referência (opcional)</label>
+                    <input type="number" step="0.01" x-model="newAcao.preco_referencia">
+                    <small>Se não informado, será usado o preço atual</small>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" @click="showAddAcaoModal = false" class="btn-secondary">Cancelar</button>
+                    <button type="submit" class="btn-primary">Adicionar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Ação Modal -->
+    <div x-show="showEditAcaoModal" class="modal-overlay" @click="showEditAcaoModal = false">
+        <div class="modal" @click.stop>
+            <h3>Editar Ação</h3>
+            <form @submit.prevent="updateAcao()">
+                <div class="form-group">
+                    <label>Ticker</label>
+                    <input type="text" x-model="editingAcao.ticker" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Preço de Referência</label>
+                    <input type="number" step="0.01" x-model="editingAcao.preco_referencia" required>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" @click="showEditAcaoModal = false" class="btn-secondary">Cancelar</button>
+                    <button type="submit" class="btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Alert Modal -->
+    <div x-show="showAddAlertModal" class="modal-overlay" @click="showAddAlertModal = false">
+        <div class="modal" @click.stop>
+            <h3>Adicionar Alerta de Preço</h3>
+            <form @submit.prevent="addAlertaPreco()">
+                <div class="form-group">
+                    <label>Ticker</label>
+                    <select x-model="newAlerta.ticker" required>
+                        <option value="">Selecione uma ação</option>
+                        <template x-for="acao in acoesDetalhadas" :key="acao.ticker">
+                            <option :value="acao.ticker" x-text="acao.ticker"></option>
+                        </template>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Preço Alvo</label>
+                    <input type="number" step="0.01" x-model="newAlerta.preco_alvo" required>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" @click="showAddAlertModal = false" class="btn-secondary">Cancelar</button>
+                    <button type="submit" class="btn-primary">Adicionar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Pânico Modal -->
+    <div x-show="showAddPanicoModal" class="modal-overlay" @click="showAddPanicoModal = false">
+        <div class="modal" @click.stop>
+            <h3>Adicionar Alerta de Pânico</h3>
+            <form @submit.prevent="addAlertaPanico()">
+                <div class="form-group">
+                    <label>Ticker</label>
+                    <select x-model="newPanico.ticker" required>
+                        <option value="">Selecione uma ação</option>
+                        <template x-for="acao in acoesDetalhadas" :key="acao.ticker">
+                            <option :value="acao.ticker" x-text="acao.ticker"></option>
+                        </template>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Percentual de Queda (%)</label>
+                    <input type="number" step="0.1" x-model="newPanico.percentual_queda" required>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" @click="showAddPanicoModal = false" class="btn-secondary">Cancelar</button>
+                    <button type="submit" class="btn-primary">Adicionar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/trade/static/js/main.js"></script>
+</body>
+</html>
+
