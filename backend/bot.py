@@ -8,6 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import requests
 import logging
 import os
+yf.pdr_override()  # ativa override do pandas_datareader
 
 # Configuração de logging
 logging.basicConfig(
