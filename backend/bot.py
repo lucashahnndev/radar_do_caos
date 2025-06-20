@@ -650,7 +650,7 @@ def main():
     setup_database()
 
     # Obter token do ambiente ou usar o hardcoded para desenvolvimento
-    TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7591057488:AAGOikjaLQWFPsZpkGsqIUnZEzEDsiR3vZU")
+    TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 
     if not TOKEN or TOKEN == "YOUR_BOT_TOKEN_HERE":
         logger.error("Token do Telegram não configurado!")
