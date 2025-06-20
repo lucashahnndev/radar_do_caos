@@ -13,6 +13,8 @@ import os
 import yfinance as yf
 import json
 from typing import Optional, List
+from threading import Thread
+
 import bot  # <- importa seu bot.py como módulo
 
 dominio = os.environ.get("dominio")
