@@ -13,6 +13,7 @@ import os
 import yfinance as yf
 import json
 from typing import Optional, List
+import bot  # <- importa seu bot.py como módulo
 
 dominio = os.environ.get("dominio")
 # Configurações
@@ -893,6 +894,16 @@ async def generate_dashboard_link(user_id: int, username: str = None):
         "dashboard_key": dashboard_key,
         "message": "Dashboard criado com sucesso"
     }
+
+
+def iniciar_bot():
+    bot.main()
+
+
+@app.on_event("startup")
+def on_startup():
+    thread_bot = Thread(target=iniciar_bot, daemon=True)
+    thread_bot.start()
 
 # --- Endpoint de saúde ---
 @app.get("/health")
